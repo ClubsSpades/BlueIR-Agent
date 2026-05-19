@@ -17,11 +17,20 @@ def main() -> None:
     parser.add_argument("--text", help="Alert or log text to analyze.")
     parser.add_argument("--file", help="Path to a log/text file.")
     parser.add_argument("--case-id", help="Optional case ID.")
+    parser.add_argument("--title", default="", help="Optional case title.")
+    parser.add_argument("--incident-type", default="auto", help="auto, webshell, windows, linux, or generic.")
     parser.add_argument("--out", help="Optional Markdown report output path.")
     args = parser.parse_args()
 
     agent = BlueIRAgent()
-    state = agent.analyze(_read_input(args), case_id=args.case_id)
+    source = args.file or "cli_text"
+    state = agent.analyze(
+        _read_input(args),
+        case_id=args.case_id,
+        title=args.title,
+        incident_type=args.incident_type,
+        source=source,
+    )
 
     if args.out:
         out = Path(args.out)

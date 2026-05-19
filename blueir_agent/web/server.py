@@ -1,5 +1,8 @@
 import html
+import io
 import urllib.parse
+import cgi
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -17,7 +20,7 @@ section { background: white; border: 1px solid #d8dee8; border-radius: 8px; padd
 h1 { margin: 0; font-size: 22px; }
 h2 { margin-top: 0; font-size: 16px; }
 textarea { width: 100%; min-height: 360px; box-sizing: border-box; resize: vertical; border: 1px solid #b9c2d0; border-radius: 6px; padding: 12px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
-input { width: 100%; box-sizing: border-box; border: 1px solid #b9c2d0; border-radius: 6px; padding: 9px 10px; }
+input, select { width: 100%; box-sizing: border-box; border: 1px solid #b9c2d0; border-radius: 6px; padding: 9px 10px; background: white; }
 button { background: #155eef; color: white; border: 0; border-radius: 6px; padding: 10px 14px; font-weight: 650; cursor: pointer; }
 button:hover { background: #0f4fd0; }
 .muted { color: #64748b; font-size: 13px; }
@@ -35,10 +38,14 @@ SAMPLE = """192.0.2.10 - - [19/May/2026:14:31:22 +0800] "POST /upload/shell.php?
 """
 
 
-def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "") -> bytes:
+def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "", incident_type: str = "auto") -> bytes:
     report_html = html.escape(report)
     input_html = html.escape(input_text)
     case_html = html.escape(case_id)
+    selected = {
+        name: "selected" if incident_type == name else ""
+        for name in ["auto", "webshell", "windows", "linux", "generic"]
+    }
     status = "DeepSeek enabled if DEEPSEEK_API_KEY is set; otherwise local heuristic mode."
     body = f"""<!doctype html>
 <html lang="zh-CN">
@@ -56,10 +63,24 @@ def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "") -
   <main>
     <section>
       <h2>Incident Input</h2>
-      <form method="post" class="stack">
+      <form method="post" class="stack" enctype="multipart/form-data">
         <label>
           <span class="muted">Case ID</span>
           <input name="case_id" value="{case_html}" placeholder="optional">
+        </label>
+        <label>
+          <span class="muted">Incident Type</span>
+          <select name="incident_type">
+            <option value="auto" {selected["auto"]}>Auto detect</option>
+            <option value="webshell" {selected["webshell"]}>Webshell / Web intrusion</option>
+            <option value="windows" {selected["windows"]}>Windows logon</option>
+            <option value="linux" {selected["linux"]}>Linux IR</option>
+            <option value="generic" {selected["generic"]}>Generic alert</option>
+          </select>
+        </label>
+        <label>
+          <span class="muted">Optional file upload (.txt / .log / .csv)</span>
+          <input name="evidence_file" type="file" accept=".txt,.log,.csv,text/plain,text/csv">
         </label>
         <label>
           <span class="muted">Alert / log text</span>
@@ -97,18 +118,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
-        raw = self.rfile.read(length).decode("utf-8", errors="replace")
-        form = urllib.parse.parse_qs(raw)
-        text = form.get("text", [""])[0]
-        case_id = form.get("case_id", [""])[0].strip() or None
+        raw = self.rfile.read(length)
+        form, uploaded_name = self._parse_form(raw)
+        text = form.get("text", "")
+        case_id = form.get("case_id", "").strip() or None
+        incident_type = form.get("incident_type", "auto")
+        source = uploaded_name or "web_textarea"
 
-        state = BlueIRAgent().analyze(text, case_id=case_id)
+        state = BlueIRAgent().analyze(text, case_id=case_id, incident_type=incident_type, source=source)
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
         report_path = REPORT_DIR / f"{state.case_id}.md"
         report_path.write_text(state.report_markdown, encoding="utf-8")
 
         report = state.report_markdown + f"\n\nReport saved to: {report_path}\n"
-        self._send(render_page(report=report, input_text=text, case_id=state.case_id))
+        self._send(render_page(report=report, input_text=text, case_id=state.case_id, incident_type=incident_type))
 
     def log_message(self, format: str, *args) -> None:
         return
@@ -120,9 +143,35 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _parse_form(self, raw: bytes) -> tuple[dict[str, str], str]:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.startswith("multipart/form-data"):
+            environ = {
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+                "CONTENT_LENGTH": str(len(raw)),
+            }
+            form = cgi.FieldStorage(fp=io.BytesIO(raw), environ=environ, keep_blank_values=True)
+            result = {}
+            uploaded_name = ""
+            for key in form.keys():
+                field = form[key]
+                if key == "evidence_file" and getattr(field, "filename", ""):
+                    uploaded_name = field.filename
+                    file_data = field.file.read()
+                    result["text"] = file_data.decode("utf-8", errors="replace")
+                elif not getattr(field, "filename", ""):
+                    result[key] = field.value
+            return result, uploaded_name
+
+        decoded = raw.decode("utf-8", errors="replace")
+        parsed = urllib.parse.parse_qs(decoded)
+        return {key: values[0] for key, values in parsed.items()}, ""
+
 
 def main() -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)
-    print("BlueIR-Agent Web UI: http://127.0.0.1:8765")
+    port = int(os.environ.get("BLUEIR_WEB_PORT", "8765"))
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    print(f"BlueIR-Agent Web UI: http://127.0.0.1:{port}")
     print("Press Ctrl+C to stop.")
     server.serve_forever()

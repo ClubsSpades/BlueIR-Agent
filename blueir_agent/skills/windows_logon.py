@@ -2,6 +2,7 @@ import collections
 import re
 
 from blueir_agent.agent.state import AnalysisState, Finding
+from blueir_agent.tools import extract_timestamp
 
 
 class WindowsLogonSkill:
@@ -29,6 +30,8 @@ class WindowsLogonSkill:
         success = event_counts.get("4624", 0)
         explicit = event_counts.get("4648", 0)
         source_ips = collections.Counter(state.iocs.get("ipv4", []))
+        accounts = collections.Counter(re.findall(r"(?:Account|TargetUserName|UserName)=([\w.$@-]+)", text, re.IGNORECASE))
+        logon_types = collections.Counter(re.findall(r"LogonType=([0-9]+)", text, re.IGNORECASE))
 
         if failed or success or explicit:
             state.incident_type = "windows_logon_triage"
@@ -38,6 +41,8 @@ class WindowsLogonSkill:
                 if (count := event_counts[event_id])
             ]
             evidence.extend(f"Observed source IP: {ip} ({count} occurrence)" for ip, count in source_ips.most_common(10))
+            evidence.extend(f"Observed account: {account} ({count} occurrence)" for account, count in accounts.most_common(10))
+            evidence.extend(f"Observed LogonType: {logon_type} ({count} occurrence)" for logon_type, count in logon_types.most_common(10))
             severity = "high" if failed >= 5 and success >= 1 else "medium"
             state.findings.append(
                 Finding(
@@ -65,3 +70,15 @@ class WindowsLogonSkill:
                         "id": "T1078 / T1543",
                     }
                 )
+            for line in state.input_text.splitlines():
+                timestamp = extract_timestamp(line)
+                event_match = re.search(r"\b(4624|4625|4648|4672|4720|4728|7045)\b", line)
+                if timestamp and event_match:
+                    event_id = event_match.group(1)
+                    state.add_timeline(
+                        timestamp=timestamp,
+                        title=f"Windows event {event_id}: {self.EVENT_IDS.get(event_id, 'security event')}",
+                        source=self.name,
+                        evidence=line[:500],
+                        confidence="high",
+                    )

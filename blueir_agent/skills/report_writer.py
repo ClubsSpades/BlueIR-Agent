@@ -17,6 +17,8 @@ class ReportWriterSkill:
             f"# BlueIR Incident Report: {state.case_id}",
             "",
             f"- Generated: {now}",
+            f"- Title: {state.title or state.case_id}",
+            f"- Requested type: {state.requested_incident_type}",
             f"- Incident type: {state.incident_type}",
             f"- Safety: {safety_notice()}",
             "",
@@ -27,11 +29,27 @@ class ReportWriterSkill:
             "## IOC Summary",
             "",
         ]
-        for kind, values in state.iocs.items():
-            if values:
-                lines.append(f"- {kind}: {', '.join(values[:30])}")
-        if not any(state.iocs.values()):
+        if state.structured_iocs:
+            lines.append("| Type | Value | Source | Confidence | First Seen |")
+            lines.append("|---|---|---|---|---|")
+            for ioc in state.structured_iocs[:50]:
+                lines.append(f"| {ioc.ioc_type} | `{ioc.value}` | {ioc.source} | {ioc.confidence} | {ioc.first_seen or '-'} |")
+        elif any(state.iocs.values()):
+            for kind, values in state.iocs.items():
+                if values:
+                    lines.append(f"- {kind}: {', '.join(values[:30])}")
+        else:
             lines.append("- No obvious IOC extracted.")
+
+        lines.extend(["", "## Timeline", ""])
+        if state.timeline:
+            lines.append("| Time | Event | Source | Confidence | Evidence |")
+            lines.append("|---|---|---|---|---|")
+            for event in sorted(state.timeline, key=lambda item: item.timestamp)[:80]:
+                evidence = event.evidence.replace("|", "\\|")
+                lines.append(f"| {event.timestamp} | {event.title} | {event.source} | {event.confidence} | `{evidence[:220]}` |")
+        else:
+            lines.append("- No timeline events extracted.")
 
         lines.extend(["", "## Findings", ""])
         if state.findings:
@@ -49,6 +67,14 @@ class ReportWriterSkill:
                 lines.append("")
         else:
             lines.append("No high-confidence finding was produced by the current MVP skills.")
+
+        lines.extend(["", "## Evidence Items", ""])
+        if state.evidence_items:
+            for item in state.evidence_items:
+                summary = item.content[:160].replace("\n", " ")
+                lines.append(f"- {item.source} / {item.evidence_type}: {summary}")
+        else:
+            lines.append("- No evidence item recorded.")
 
         lines.extend(["", "## MITRE ATT&CK Mapping", ""])
         if state.attack_mapping:

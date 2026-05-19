@@ -1,0 +1,39 @@
+{
+  "roles": {
+    "triage": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "incident_classification"
+    },
+    "ioc": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "ioc_extraction"
+    },
+    "evidence": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "evidence_structuring"
+    },
+    "mitre": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "attack_mapping"
+    },
+    "planner": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "incident_response_planning"
+    },
+    "report": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "report_generation"
+    },
+    "reviewer": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "quality_review"
+    }
+  }
+}
