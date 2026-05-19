@@ -1,0 +1,9 @@
+[project]
+name = "blueir-agent"
+version = "0.1.0"
+description = "Blue-team incident response agent MVP with DeepSeek provider support."
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

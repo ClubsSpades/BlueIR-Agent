@@ -1,0 +1,7 @@
+2026-05-19 08:10:01 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:03 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:05 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:07 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:09 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:11 EventID=4624 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:12:00 EventID=4672 Account=admin SpecialPrivileges=SeDebugPrivilege
