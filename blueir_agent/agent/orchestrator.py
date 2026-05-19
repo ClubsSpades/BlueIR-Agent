@@ -21,6 +21,8 @@ class BlueIRAgent:
         title: str = "",
         incident_type: str = "auto",
         source: str = "input",
+        evidence_type: str = "text",
+        evidence_metadata: Optional[dict] = None,
     ) -> AnalysisState:
         state = AnalysisState(
             case_id=case_id or f"case-{uuid4().hex[:8]}",
@@ -28,7 +30,14 @@ class BlueIRAgent:
             requested_incident_type=incident_type or "auto",
             input_text=normalize_text(text),
         )
-        state.evidence_items.append(EvidenceItem(source=source, content=state.input_text))
+        state.evidence_items.append(
+            EvidenceItem(
+                source=source,
+                content=state.input_text,
+                evidence_type=evidence_type,
+                metadata=evidence_metadata or {},
+            )
+        )
         state.iocs = extract_iocs(state.input_text)
         state.structured_iocs = extract_structured_iocs(state.input_text, source=source)
         state.add_trace("extract_iocs", state.iocs)
@@ -77,6 +86,8 @@ class BlueIRAgent:
             return f"Model call failed, local analysis only: {exc}"
 
     def _should_run(self, skill, state: AnalysisState) -> bool:
+        if skill.name == "file_evidence" and skill.score(state) > 0:
+            return True
         requested = state.requested_incident_type.lower()
         if requested and requested != "auto":
             aliases = {

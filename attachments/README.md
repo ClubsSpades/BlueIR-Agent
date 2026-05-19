@@ -23,3 +23,23 @@
 5. `benign_web.log`
    - Web UI 事件类型选择：`Auto detect`
    - 预期：不会因为普通 `.php` 页面直接报 Webshell 高危
+
+6. `sample_http.pcap`
+   - Web UI 事件类型选择：`Auto detect` 或 `Generic alert`
+   - 预期：识别 PCAP、计算 SHA256、提取包数量和 IPv4 flow
+
+7. `sample_security.evtx`
+   - Web UI 事件类型选择：`Auto detect` 或 `Generic alert`
+   - 预期：识别 EVTX、计算 SHA256、提取可见字符串，并提示导出 CSV/XML 后深度分析
+
+## v3 文件类型说明
+
+- 文本类：`.txt`、`.log`、`.csv`、`.json`、`.xml`
+- 流量类：`.pcap`、`.pcapng`
+- Windows 事件：`.evtx`
+
+当前 v3 对 PCAP/EVTX 是安全预分析：
+
+- PCAP：支持 classic pcap 的文件头、包数量、部分 Ethernet IPv4 TCP/UDP flow 提取
+- PCAPNG：识别格式和字符串，完整解析建议后续接入 tshark/Zeek
+- EVTX：识别格式和字符串，完整事件解析建议先导出 CSV/XML 再上传

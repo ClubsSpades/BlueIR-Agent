@@ -14,19 +14,26 @@ class ReportWriterSkill:
     def run(self, state: AnalysisState) -> None:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         lines = [
-            f"# BlueIR Incident Report: {state.case_id}",
+            f"# BlueIR 事件报告 / Incident Report: {state.case_id}",
             "",
-            f"- Generated: {now}",
-            f"- Title: {state.title or state.case_id}",
-            f"- Requested type: {state.requested_incident_type}",
-            f"- Incident type: {state.incident_type}",
-            f"- Safety: {safety_notice()}",
+            f"- 生成时间 / Generated: {now}",
+            f"- 标题 / Title: {state.title or state.case_id}",
+            f"- 用户选择类型 / Requested type: {state.requested_incident_type}",
+            f"- 实际识别类型 / Incident type: {state.incident_type}",
+            f"- 安全边界 / Safety: {safety_notice()}",
             "",
-            "## Executive Summary",
+            "## 输入说明 / Input Guidance",
+            "",
+            "- 必填项 / Required: 至少提供告警/日志文本，或上传一个证据文件。Provide pasted text or upload one evidence file.",
+            "- 上传优先 / Upload priority: 同时提供文本和文件时，默认优先分析上传文件。If both are provided, the uploaded file is analyzed first.",
+            "- 事件类型 / Incident Type: `Auto detect` 会尝试匹配多个 Skill；手动选择会强制指定 Skill。Wrong selection may produce no Finding or only metadata.",
+            "- 二进制文件 / Binary files: PCAP/EVTX 当前执行安全预分析；完整协议/事件解析建议导出为 Zeek/tshark/CSV/XML 后再上传。",
+            "",
+            "## 执行摘要 / Executive Summary",
             "",
             state.model_summary or "Local heuristic analysis completed. Review findings and evidence below.",
             "",
-            "## IOC Summary",
+            "## IOC 摘要 / IOC Summary",
             "",
         ]
         if state.structured_iocs:
@@ -41,7 +48,7 @@ class ReportWriterSkill:
         else:
             lines.append("- No obvious IOC extracted.")
 
-        lines.extend(["", "## Timeline", ""])
+        lines.extend(["", "## 时间线 / Timeline", ""])
         if state.timeline:
             lines.append("| Time | Event | Source | Confidence | Evidence |")
             lines.append("|---|---|---|---|---|")
@@ -51,42 +58,45 @@ class ReportWriterSkill:
         else:
             lines.append("- No timeline events extracted.")
 
-        lines.extend(["", "## Findings", ""])
+        lines.extend(["", "## 发现项 / Findings", ""])
         if state.findings:
             for finding in state.findings:
                 lines.extend(
                     [
                         f"### {finding.title}",
                         "",
-                        f"- Severity: {finding.severity}",
-                        f"- Recommendation: {finding.recommendation}",
-                        "- Evidence:",
+                        f"- 严重性 / Severity: {finding.severity}",
+                        f"- 处置建议 / Recommendation: {finding.recommendation}",
+                        "- 证据 / Evidence:",
                     ]
                 )
                 lines.extend(f"  - {item}" for item in finding.evidence[:20])
                 lines.append("")
         else:
-            lines.append("No high-confidence finding was produced by the current MVP skills.")
+            lines.append("当前 Skill 未产生高置信度发现 / No high-confidence finding was produced by the current skills.")
 
-        lines.extend(["", "## Evidence Items", ""])
+        lines.extend(["", "## 证据项 / Evidence Items", ""])
         if state.evidence_items:
             for item in state.evidence_items:
                 summary = item.content[:160].replace("\n", " ")
                 lines.append(f"- {item.source} / {item.evidence_type}: {summary}")
+                if item.metadata:
+                    meta = ", ".join(f"{key}={value}" for key, value in item.metadata.items() if key in {"detected_type", "size_bytes", "sha256"})
+                    lines.append(f"  - 元数据 / Metadata: {meta}")
         else:
-            lines.append("- No evidence item recorded.")
+            lines.append("- 未记录证据项 / No evidence item recorded.")
 
-        lines.extend(["", "## MITRE ATT&CK Mapping", ""])
+        lines.extend(["", "## MITRE ATT&CK 映射 / Mapping", ""])
         if state.attack_mapping:
             for item in state.attack_mapping:
                 lines.append(f"- {item['id']} | {item['tactic']} | {item['technique']}")
         else:
-            lines.append("- No mapping produced.")
+            lines.append("- 未生成映射 / No mapping produced.")
 
         lines.extend(
             [
                 "",
-                "## Recommended Next Steps",
+                "## 后续建议 / Recommended Next Steps",
                 "",
                 "1. Preserve raw logs and suspicious files before remediation.",
                 "2. Validate the timeline with original event sources.",
@@ -94,7 +104,7 @@ class ReportWriterSkill:
                 "4. Apply containment only after human approval.",
                 "5. Add detection rules based on confirmed IOC and behavior.",
                 "",
-                "## Tool Trace",
+                "## 工具轨迹 / Tool Trace",
                 "",
             ]
         )

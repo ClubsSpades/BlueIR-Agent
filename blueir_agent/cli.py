@@ -2,13 +2,16 @@ import argparse
 from pathlib import Path
 
 from blueir_agent.agent import BlueIRAgent
+from blueir_agent.tools import analyze_file_bytes
 
 
-def _read_input(args: argparse.Namespace) -> str:
+def _read_input(args: argparse.Namespace) -> tuple[str, str, dict]:
     if args.file:
-        return Path(args.file).read_text(encoding="utf-8", errors="replace")
+        path = Path(args.file)
+        analysis = analyze_file_bytes(path.name, path.read_bytes())
+        return analysis.text, analysis.evidence_type, analysis.metadata
     if args.text:
-        return args.text
+        return args.text, "text", {}
     raise SystemExit("Provide --text or --file.")
 
 
@@ -24,12 +27,15 @@ def main() -> None:
 
     agent = BlueIRAgent()
     source = args.file or "cli_text"
+    input_text, evidence_type, metadata = _read_input(args)
     state = agent.analyze(
-        _read_input(args),
+        input_text,
         case_id=args.case_id,
         title=args.title,
         incident_type=args.incident_type,
         source=source,
+        evidence_type=evidence_type,
+        evidence_metadata=metadata,
     )
 
     if args.out:

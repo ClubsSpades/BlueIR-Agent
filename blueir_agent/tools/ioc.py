@@ -30,13 +30,20 @@ def extract_iocs(text: str) -> dict[str, list[str]]:
 
 def extract_structured_iocs(text: str, source: str = "input") -> list[IOC]:
     raw = extract_iocs(text)
+    type_names = {
+        "ipv4": "ipv4",
+        "urls": "url",
+        "domains": "domain",
+        "emails": "email",
+        "hashes": "hash",
+    }
     structured = []
     for ioc_type, values in raw.items():
         for value in values:
             structured.append(
                 IOC(
                     value=value,
-                    ioc_type=ioc_type.rstrip("s"),
+                    ioc_type=type_names.get(ioc_type, ioc_type),
                     source=source,
                     confidence="high" if ioc_type in {"ipv4", "urls", "hashes"} else "medium",
                     first_seen=_first_seen_for_value(text, value),

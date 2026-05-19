@@ -8,6 +8,7 @@ class EvidenceItem:
     content: str
     evidence_type: str = "text"
     timestamp: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -51,6 +52,7 @@ class AnalysisState:
     attack_mapping: list[dict[str, str]] = field(default_factory=list)
     report_markdown: str = ""
     model_summary: str = ""
+    input_guidance: list[str] = field(default_factory=list)
     tool_trace: list[dict[str, Any]] = field(default_factory=list)
 
     def add_trace(self, tool: str, output: Any) -> None:

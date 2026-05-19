@@ -1,3 +1,4 @@
+from blueir_agent.skills.file_evidence import FileEvidenceSkill
 from blueir_agent.skills.linux_ir import LinuxIRSkill
 from blueir_agent.skills.report_writer import ReportWriterSkill
 from blueir_agent.skills.webshell_triage import WebshellTriageSkill
@@ -9,5 +10,6 @@ def default_skills():
         WebshellTriageSkill(),
         WindowsLogonSkill(),
         LinuxIRSkill(),
+        FileEvidenceSkill(),
         ReportWriterSkill(),
     ]

@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from blueir_agent.agent import BlueIRAgent
+from blueir_agent.tools import analyze_file_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = ROOT / "reports"
@@ -24,6 +25,8 @@ input, select { width: 100%; box-sizing: border-box; border: 1px solid #b9c2d0; 
 button { background: #155eef; color: white; border: 0; border-radius: 6px; padding: 10px 14px; font-weight: 650; cursor: pointer; }
 button:hover { background: #0f4fd0; }
 .muted { color: #64748b; font-size: 13px; }
+.hint { color: #475569; font-size: 13px; line-height: 1.45; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; }
+.required { color: #b42318; font-weight: 650; }
 .stack { display: grid; gap: 12px; }
 .report { white-space: pre-wrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; background: #fbfcfe; border: 1px solid #d8dee8; border-radius: 6px; padding: 14px; overflow-x: auto; }
 .pill { display: inline-block; background: #e8eefc; color: #173b8f; border-radius: 999px; padding: 3px 9px; font-size: 12px; margin-right: 6px; }
@@ -45,10 +48,14 @@ LABELS = {
         "input_title": "事件输入",
         "case_id": "案件 ID",
         "optional": "可选",
+        "required": "必填",
         "language": "语言",
         "incident_type": "事件类型",
-        "upload": "可选文件上传（.txt / .log / .csv）",
+        "upload": "可选文件上传",
         "text": "告警 / 日志文本",
+        "input_help": "至少填写“告警/日志文本”或上传一个文件。两者同时存在时，优先分析上传文件；文本框会作为粘贴日志和无文件测试入口。",
+        "type_help": "事件类型用于强制指定分析 Skill。选 Auto detect 会自动尝试所有匹配 Skill；选错时可能导致没有 Finding 或只生成文件元数据报告。",
+        "supported": "支持：txt、log、csv、json、xml、pcap、pcapng、evtx。PCAP/EVTX 当前为安全预分析：识别类型、哈希、字符串和部分 PCAP 流量摘要。",
         "analyze": "开始分析",
         "report": "报告",
         "empty_report": "点击分析后会在这里生成 Markdown 报告。",
@@ -65,10 +72,14 @@ LABELS = {
         "input_title": "Incident Input",
         "case_id": "Case ID",
         "optional": "optional",
+        "required": "required",
         "language": "Language",
         "incident_type": "Incident Type",
-        "upload": "Optional file upload (.txt / .log / .csv)",
+        "upload": "Optional file upload",
         "text": "Alert / log text",
+        "input_help": "Provide alert/log text or upload one file. If both are present, the uploaded file is analyzed first; the text box is for pasted logs and quick tests.",
+        "type_help": "Incident Type forces a specific analysis Skill. Auto detect tries every matching Skill. A wrong type may produce no Finding or only a file metadata report.",
+        "supported": "Supported: txt, log, csv, json, xml, pcap, pcapng, evtx. PCAP/EVTX currently use safe pre-analysis: type, hash, strings, and partial PCAP flow summaries.",
         "analyze": "Analyze",
         "report": "Report",
         "empty_report": "Run an analysis to generate a Markdown report.",
@@ -116,6 +127,7 @@ def render_page(
     <section>
       <h2>{labels["input_title"]}</h2>
       <form method="post" class="stack" enctype="multipart/form-data">
+        <div class="hint">{labels["input_help"]}<br>{labels["type_help"]}<br>{labels["supported"]}</div>
         <label>
           <span class="muted">{labels["case_id"]}</span>
           <input name="case_id" value="{case_html}" placeholder="{labels["optional"]}">
@@ -139,10 +151,10 @@ def render_page(
         </label>
         <label>
           <span class="muted">{labels["upload"]}</span>
-          <input name="evidence_file" type="file" accept=".txt,.log,.csv,text/plain,text/csv">
+          <input name="evidence_file" type="file" accept=".txt,.log,.csv,.json,.xml,.pcap,.pcapng,.evtx,text/plain,text/csv,application/json,application/xml">
         </label>
         <label>
-          <span class="muted">{labels["text"]}</span>
+          <span class="muted">{labels["text"]} <span class="required">*</span></span>
           <textarea name="text">{input_html}</textarea>
         </label>
         <button type="submit">{labels["analyze"]}</button>
@@ -180,14 +192,21 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
-        form, uploaded_name = self._parse_form(raw)
+        form, uploaded_name, evidence_type, metadata = self._parse_form(raw)
         text = form.get("text", "")
         case_id = form.get("case_id", "").strip() or None
         incident_type = form.get("incident_type", "auto")
         lang = form.get("lang", "zh")
         source = uploaded_name or "web_textarea"
 
-        state = BlueIRAgent().analyze(text, case_id=case_id, incident_type=incident_type, source=source)
+        state = BlueIRAgent().analyze(
+            text,
+            case_id=case_id,
+            incident_type=incident_type,
+            source=source,
+            evidence_type=evidence_type,
+            evidence_metadata=metadata,
+        )
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
         report_path = REPORT_DIR / f"{state.case_id}.md"
         report_path.write_text(state.report_markdown, encoding="utf-8")
@@ -206,7 +225,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _parse_form(self, raw: bytes) -> tuple[dict[str, str], str]:
+    def _parse_form(self, raw: bytes) -> tuple[dict[str, str], str, str, dict]:
         content_type = self.headers.get("Content-Type", "")
         if content_type.startswith("multipart/form-data"):
             environ = {
@@ -217,19 +236,24 @@ class Handler(BaseHTTPRequestHandler):
             form = cgi.FieldStorage(fp=io.BytesIO(raw), environ=environ, keep_blank_values=True)
             result = {}
             uploaded_name = ""
+            evidence_type = "text"
+            metadata = {}
             for key in form.keys():
                 field = form[key]
                 if key == "evidence_file" and getattr(field, "filename", ""):
                     uploaded_name = field.filename
                     file_data = field.file.read()
-                    result["text"] = file_data.decode("utf-8", errors="replace")
+                    analysis = analyze_file_bytes(uploaded_name, file_data)
+                    result["text"] = analysis.text
+                    evidence_type = analysis.evidence_type
+                    metadata = analysis.metadata
                 elif not getattr(field, "filename", ""):
                     result[key] = field.value
-            return result, uploaded_name
+            return result, uploaded_name, evidence_type, metadata
 
         decoded = raw.decode("utf-8", errors="replace")
         parsed = urllib.parse.parse_qs(decoded)
-        return {key: values[0] for key, values in parsed.items()}, ""
+        return {key: values[0] for key, values in parsed.items()}, "", "text", {}
 
 
 def main() -> None:
