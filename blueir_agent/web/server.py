@@ -38,7 +38,59 @@ SAMPLE = """192.0.2.10 - - [19/May/2026:14:31:22 +0800] "POST /upload/shell.php?
 """
 
 
-def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "", incident_type: str = "auto") -> bytes:
+LABELS = {
+    "zh": {
+        "html_lang": "zh-CN",
+        "status": "已配置 DEEPSEEK_API_KEY 时启用 DeepSeek；未配置时使用本地启发式模式。",
+        "input_title": "事件输入",
+        "case_id": "案件 ID",
+        "optional": "可选",
+        "language": "语言",
+        "incident_type": "事件类型",
+        "upload": "可选文件上传（.txt / .log / .csv）",
+        "text": "告警 / 日志文本",
+        "analyze": "开始分析",
+        "report": "报告",
+        "empty_report": "点击分析后会在这里生成 Markdown 报告。",
+        "saved_to": "报告已保存到",
+        "auto": "自动识别",
+        "webshell": "Webshell / Web 入侵",
+        "windows": "Windows 登录",
+        "linux": "Linux 应急",
+        "generic": "通用告警",
+    },
+    "en": {
+        "html_lang": "en",
+        "status": "DeepSeek is enabled when DEEPSEEK_API_KEY is set; otherwise local heuristic mode is used.",
+        "input_title": "Incident Input",
+        "case_id": "Case ID",
+        "optional": "optional",
+        "language": "Language",
+        "incident_type": "Incident Type",
+        "upload": "Optional file upload (.txt / .log / .csv)",
+        "text": "Alert / log text",
+        "analyze": "Analyze",
+        "report": "Report",
+        "empty_report": "Run an analysis to generate a Markdown report.",
+        "saved_to": "Report saved to",
+        "auto": "Auto detect",
+        "webshell": "Webshell / Web intrusion",
+        "windows": "Windows logon",
+        "linux": "Linux IR",
+        "generic": "Generic alert",
+    },
+}
+
+
+def render_page(
+    report: str = "",
+    input_text: str = SAMPLE,
+    case_id: str = "",
+    incident_type: str = "auto",
+    lang: str = "zh",
+) -> bytes:
+    lang = lang if lang in LABELS else "zh"
+    labels = LABELS[lang]
     report_html = html.escape(report)
     input_html = html.escape(input_text)
     case_html = html.escape(case_id)
@@ -46,9 +98,9 @@ def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "", i
         name: "selected" if incident_type == name else ""
         for name in ["auto", "webshell", "windows", "linux", "generic"]
     }
-    status = "DeepSeek enabled if DEEPSEEK_API_KEY is set; otherwise local heuristic mode."
+    lang_selected = {"zh": "selected" if lang == "zh" else "", "en": "selected" if lang == "en" else ""}
     body = f"""<!doctype html>
-<html lang="zh-CN">
+<html lang="{labels["html_lang"]}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -58,46 +110,53 @@ def render_page(report: str = "", input_text: str = SAMPLE, case_id: str = "", i
 <body>
   <header>
     <h1>BlueIR-Agent</h1>
-    <div class="muted">{html.escape(status)}</div>
+    <div class="muted">{html.escape(labels["status"])}</div>
   </header>
   <main>
     <section>
-      <h2>Incident Input</h2>
+      <h2>{labels["input_title"]}</h2>
       <form method="post" class="stack" enctype="multipart/form-data">
         <label>
-          <span class="muted">Case ID</span>
-          <input name="case_id" value="{case_html}" placeholder="optional">
+          <span class="muted">{labels["case_id"]}</span>
+          <input name="case_id" value="{case_html}" placeholder="{labels["optional"]}">
         </label>
         <label>
-          <span class="muted">Incident Type</span>
-          <select name="incident_type">
-            <option value="auto" {selected["auto"]}>Auto detect</option>
-            <option value="webshell" {selected["webshell"]}>Webshell / Web intrusion</option>
-            <option value="windows" {selected["windows"]}>Windows logon</option>
-            <option value="linux" {selected["linux"]}>Linux IR</option>
-            <option value="generic" {selected["generic"]}>Generic alert</option>
+          <span class="muted">{labels["language"]}</span>
+          <select name="lang">
+            <option value="zh" {lang_selected["zh"]}>中文</option>
+            <option value="en" {lang_selected["en"]}>English</option>
           </select>
         </label>
         <label>
-          <span class="muted">Optional file upload (.txt / .log / .csv)</span>
+          <span class="muted">{labels["incident_type"]}</span>
+          <select name="incident_type">
+            <option value="auto" {selected["auto"]}>{labels["auto"]}</option>
+            <option value="webshell" {selected["webshell"]}>{labels["webshell"]}</option>
+            <option value="windows" {selected["windows"]}>{labels["windows"]}</option>
+            <option value="linux" {selected["linux"]}>{labels["linux"]}</option>
+            <option value="generic" {selected["generic"]}>{labels["generic"]}</option>
+          </select>
+        </label>
+        <label>
+          <span class="muted">{labels["upload"]}</span>
           <input name="evidence_file" type="file" accept=".txt,.log,.csv,text/plain,text/csv">
         </label>
         <label>
-          <span class="muted">Alert / log text</span>
+          <span class="muted">{labels["text"]}</span>
           <textarea name="text">{input_html}</textarea>
         </label>
-        <button type="submit">Analyze</button>
+        <button type="submit">{labels["analyze"]}</button>
       </form>
     </section>
     <section>
-      <h2>Report</h2>
+      <h2>{labels["report"]}</h2>
       <div>
         <span class="pill">IOC</span>
         <span class="pill">Webshell</span>
         <span class="pill">Windows Logon</span>
         <span class="pill">MITRE</span>
       </div>
-      <div class="report">{report_html or "Run an analysis to generate a Markdown report."}</div>
+      <div class="report">{report_html or labels["empty_report"]}</div>
     </section>
   </main>
 </body>
@@ -114,7 +173,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
-        self._send(render_page())
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        lang = query.get("lang", ["zh"])[0]
+        self._send(render_page(lang=lang))
 
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
@@ -123,6 +184,7 @@ class Handler(BaseHTTPRequestHandler):
         text = form.get("text", "")
         case_id = form.get("case_id", "").strip() or None
         incident_type = form.get("incident_type", "auto")
+        lang = form.get("lang", "zh")
         source = uploaded_name or "web_textarea"
 
         state = BlueIRAgent().analyze(text, case_id=case_id, incident_type=incident_type, source=source)
@@ -130,8 +192,9 @@ class Handler(BaseHTTPRequestHandler):
         report_path = REPORT_DIR / f"{state.case_id}.md"
         report_path.write_text(state.report_markdown, encoding="utf-8")
 
-        report = state.report_markdown + f"\n\nReport saved to: {report_path}\n"
-        self._send(render_page(report=report, input_text=text, case_id=state.case_id, incident_type=incident_type))
+        labels = LABELS[lang if lang in LABELS else "zh"]
+        report = state.report_markdown + f"\n\n{labels['saved_to']}: {report_path}\n"
+        self._send(render_page(report=report, input_text=text, case_id=state.case_id, incident_type=incident_type, lang=lang))
 
     def log_message(self, format: str, *args) -> None:
         return

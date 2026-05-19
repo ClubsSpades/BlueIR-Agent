@@ -32,6 +32,7 @@ class WindowsLogonSkill:
         source_ips = collections.Counter(state.iocs.get("ipv4", []))
         accounts = collections.Counter(re.findall(r"(?:Account|TargetUserName|UserName)=([\w.$@-]+)", text, re.IGNORECASE))
         logon_types = collections.Counter(re.findall(r"LogonType=([0-9]+)", text, re.IGNORECASE))
+        self._merge_csv_auth_fields(text, accounts, logon_types)
 
         if failed or success or explicit:
             state.incident_type = "windows_logon_triage"
@@ -82,3 +83,29 @@ class WindowsLogonSkill:
                         evidence=line[:500],
                         confidence="high",
                     )
+
+    def _merge_csv_auth_fields(
+        self,
+        text: str,
+        accounts: collections.Counter,
+        logon_types: collections.Counter,
+    ) -> None:
+        lines = [line for line in text.splitlines() if line.strip()]
+        if not lines or "," not in lines[0]:
+            return
+        headers = [item.strip().lower() for item in lines[0].split(",")]
+        try:
+            account_index = headers.index("account")
+        except ValueError:
+            account_index = -1
+        try:
+            logon_type_index = headers.index("logontype")
+        except ValueError:
+            logon_type_index = -1
+
+        for line in lines[1:]:
+            cells = [item.strip() for item in line.split(",")]
+            if account_index >= 0 and account_index < len(cells) and cells[account_index]:
+                accounts[cells[account_index]] += 1
+            if logon_type_index >= 0 and logon_type_index < len(cells) and cells[logon_type_index]:
+                logon_types[cells[logon_type_index]] += 1

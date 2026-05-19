@@ -83,6 +83,8 @@ python3 -B -m blueir_agent.web
 http://127.0.0.1:8765
 ```
 
+Web UI 支持中文和 English 切换，并支持上传 `.txt`、`.log`、`.csv`。
+
 如果没有配置 `DEEPSEEK_API_KEY`，系统会自动进入本地启发式模式，仍然可以测试 IOC 提取、事件识别、Finding 生成和报告输出。
 
 ## 配置项
@@ -101,6 +103,24 @@ BLUEIR_WEB_PORT       Web UI 端口，默认 8765
 示例配置见 [.env.example](.env.example)。
 
 ## 测试样例
+
+推荐直接使用 [attachments](attachments/) 目录里的仿真附件测试 v0.2 Web UI：
+
+| 文件 | 建议事件类型 | 预期效果 |
+|---|---|---|
+| `attachments/webshell_access.log` | Webshell / Web intrusion | Webshell、IOC、时间线、`T1505.003` |
+| `attachments/windows_bruteforce.csv` | Windows logon | 4625 失败后 4624 成功、账号、LogonType、`T1110` |
+| `attachments/linux_ir.txt` | Linux IR | SSH 登录、反弹 shell、计划任务、恶意 URL |
+| `attachments/mixed_alert.txt` | Auto detect | 综合 IOC、Finding、时间线 |
+| `attachments/benign_web.log` | Auto detect | 普通 PHP 页面不应直接报 Webshell 高危 |
+
+使用方式：
+
+1. 启动 Web UI。
+2. 选择语言：中文或 English。
+3. 选择事件类型，或保持 `Auto detect`。
+4. 上传 `attachments/` 目录中的样例文件。
+5. 点击分析，查看右侧 Markdown 报告。
 
 Webshell 分析：
 
@@ -157,6 +177,7 @@ blueir_agent/
   tools/              只读本地分析工具
   web/                标准库 Web UI
 configs/              角色与多模型路由配置样例
+attachments/          Web UI 上传测试附件
 examples/             测试样例日志
 reports/              本地生成报告，默认不上传 Git
 tests/                轻量测试

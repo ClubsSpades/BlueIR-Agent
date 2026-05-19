@@ -1,0 +1,8 @@
+timestamp,EventID,Account,SourceNetworkAddress,LogonType,ComputerName,Detail
+2026-05-19 08:10:01,4625,admin,203.0.113.8,10,WIN-SRV-01,Failed password
+2026-05-19 08:10:03,4625,admin,203.0.113.8,10,WIN-SRV-01,Failed password
+2026-05-19 08:10:05,4625,admin,203.0.113.8,10,WIN-SRV-01,Failed password
+2026-05-19 08:10:07,4625,admin,203.0.113.8,10,WIN-SRV-01,Failed password
+2026-05-19 08:10:09,4625,admin,203.0.113.8,10,WIN-SRV-01,Failed password
+2026-05-19 08:10:11,4624,admin,203.0.113.8,10,WIN-SRV-01,Successful logon
+2026-05-19 08:12:00,4672,admin,203.0.113.8,10,WIN-SRV-01,Special privileges assigned

