@@ -15,6 +15,11 @@
       "model": "deepseek-v4-pro",
       "task_type": "evidence_structuring"
     },
+    "timeline": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-pro",
+      "task_type": "timeline_analysis"
+    },
     "mitre": {
       "provider": "deepseek",
       "model": "deepseek-v4-pro",

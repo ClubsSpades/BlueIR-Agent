@@ -16,16 +16,19 @@ REPORT_DIR = ROOT / "reports"
 STYLE = """
 body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f7f9; color: #17202a; }
 header { background: #0f172a; color: white; padding: 18px 28px; }
-main { max-width: 1180px; margin: 0 auto; padding: 22px; display: grid; grid-template-columns: minmax(320px, 420px) 1fr; gap: 18px; }
+main { max-width: 1280px; margin: 0 auto; padding: 22px; display: grid; grid-template-columns: minmax(340px, 450px) 1fr; gap: 18px; }
 section { background: white; border: 1px solid #d8dee8; border-radius: 8px; padding: 18px; }
 h1 { margin: 0; font-size: 22px; }
 h2 { margin-top: 0; font-size: 16px; }
 textarea { width: 100%; min-height: 360px; box-sizing: border-box; resize: vertical; border: 1px solid #b9c2d0; border-radius: 6px; padding: 12px; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+textarea.question { min-height: 88px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 input, select { width: 100%; box-sizing: border-box; border: 1px solid #b9c2d0; border-radius: 6px; padding: 9px 10px; background: white; }
 button { background: #155eef; color: white; border: 0; border-radius: 6px; padding: 10px 14px; font-weight: 650; cursor: pointer; }
 button:hover { background: #0f4fd0; }
 .muted { color: #64748b; font-size: 13px; }
 .hint { color: #475569; font-size: 13px; line-height: 1.45; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.toolbar .pill { margin-right: 0; }
 .required { color: #b42318; font-weight: 650; }
 .stack { display: grid; gap: 12px; }
 .report { white-space: pre-wrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; background: #fbfcfe; border: 1px solid #d8dee8; border-radius: 6px; padding: 14px; overflow-x: auto; }
@@ -51,10 +54,13 @@ LABELS = {
         "required": "必填",
         "language": "语言",
         "incident_type": "事件类型",
+        "analysis_mode": "分析模式",
+        "question": "分析问题 / 提示词",
         "upload": "可选文件上传",
-        "text": "告警 / 日志文本",
+        "text": "告警 / 日志文本（未上传文件时填写）",
         "input_help": "至少填写“告警/日志文本”或上传一个文件。两者同时存在时，优先分析上传文件；文本框会作为粘贴日志和无文件测试入口。",
         "type_help": "事件类型用于强制指定分析 Skill。选 Auto detect 会自动尝试所有匹配 Skill；选错时可能导致没有 Finding 或只生成文件元数据报告。",
+        "question_help": "上传附件后可以在这里提出针对性问题，例如：是否存在爆破成功？可疑外联是什么？攻击入口是什么？",
         "supported": "支持：txt、log、csv、json、xml、pcap、pcapng、evtx。PCAP/EVTX 当前为安全预分析：识别类型、哈希、字符串和部分 PCAP 流量摘要。",
         "analyze": "开始分析",
         "report": "报告",
@@ -65,6 +71,11 @@ LABELS = {
         "windows": "Windows 登录",
         "linux": "Linux 应急",
         "generic": "通用告警",
+        "quick": "快速分诊",
+        "deep": "深度分析",
+        "report_mode": "报告生成",
+        "ioc_mode": "只提取 IOC",
+        "question_mode": "针对我的问题",
     },
     "en": {
         "html_lang": "en",
@@ -75,10 +86,13 @@ LABELS = {
         "required": "required",
         "language": "Language",
         "incident_type": "Incident Type",
+        "analysis_mode": "Analysis Mode",
+        "question": "Investigation Question / Prompt",
         "upload": "Optional file upload",
-        "text": "Alert / log text",
+        "text": "Alert / log text (use when no file is uploaded)",
         "input_help": "Provide alert/log text or upload one file. If both are present, the uploaded file is analyzed first; the text box is for pasted logs and quick tests.",
         "type_help": "Incident Type forces a specific analysis Skill. Auto detect tries every matching Skill. A wrong type may produce no Finding or only a file metadata report.",
+        "question_help": "After uploading evidence, ask a focused question here, such as: was brute force successful, what is the suspicious outbound connection, or what was the entry point?",
         "supported": "Supported: txt, log, csv, json, xml, pcap, pcapng, evtx. PCAP/EVTX currently use safe pre-analysis: type, hash, strings, and partial PCAP flow summaries.",
         "analyze": "Analyze",
         "report": "Report",
@@ -89,6 +103,11 @@ LABELS = {
         "windows": "Windows logon",
         "linux": "Linux IR",
         "generic": "Generic alert",
+        "quick": "Quick triage",
+        "deep": "Deep analysis",
+        "report_mode": "Report generation",
+        "ioc_mode": "IOC only",
+        "question_mode": "Focus on my question",
     },
 }
 
@@ -98,6 +117,8 @@ def render_page(
     input_text: str = SAMPLE,
     case_id: str = "",
     incident_type: str = "auto",
+    analysis_mode: str = "quick",
+    user_question: str = "",
     lang: str = "zh",
 ) -> bytes:
     lang = lang if lang in LABELS else "zh"
@@ -109,7 +130,12 @@ def render_page(
         name: "selected" if incident_type == name else ""
         for name in ["auto", "webshell", "windows", "linux", "generic"]
     }
+    mode_selected = {
+        name: "selected" if analysis_mode == name else ""
+        for name in ["quick", "deep", "report", "ioc", "question"]
+    }
     lang_selected = {"zh": "selected" if lang == "zh" else "", "en": "selected" if lang == "en" else ""}
+    question_html = html.escape(user_question)
     body = f"""<!doctype html>
 <html lang="{labels["html_lang"]}">
 <head>
@@ -150,11 +176,25 @@ def render_page(
           </select>
         </label>
         <label>
+          <span class="muted">{labels["analysis_mode"]}</span>
+          <select name="analysis_mode">
+            <option value="quick" {mode_selected["quick"]}>{labels["quick"]}</option>
+            <option value="deep" {mode_selected["deep"]}>{labels["deep"]}</option>
+            <option value="report" {mode_selected["report"]}>{labels["report_mode"]}</option>
+            <option value="ioc" {mode_selected["ioc"]}>{labels["ioc_mode"]}</option>
+            <option value="question" {mode_selected["question"]}>{labels["question_mode"]}</option>
+          </select>
+        </label>
+        <label>
+          <span class="muted">{labels["question"]}</span>
+          <textarea class="question" name="user_question" placeholder="{labels["question_help"]}">{question_html}</textarea>
+        </label>
+        <label>
           <span class="muted">{labels["upload"]}</span>
           <input name="evidence_file" type="file" accept=".txt,.log,.csv,.json,.xml,.pcap,.pcapng,.evtx,text/plain,text/csv,application/json,application/xml">
         </label>
         <label>
-          <span class="muted">{labels["text"]} <span class="required">*</span></span>
+          <span class="muted">{labels["text"]}</span>
           <textarea name="text">{input_html}</textarea>
         </label>
         <button type="submit">{labels["analyze"]}</button>
@@ -162,8 +202,11 @@ def render_page(
     </section>
     <section>
       <h2>{labels["report"]}</h2>
-      <div>
+      <div class="toolbar">
         <span class="pill">IOC</span>
+        <span class="pill">Timeline</span>
+        <span class="pill">Findings</span>
+        <span class="pill">Roles</span>
         <span class="pill">Webshell</span>
         <span class="pill">Windows Logon</span>
         <span class="pill">MITRE</span>
@@ -196,6 +239,8 @@ class Handler(BaseHTTPRequestHandler):
         text = form.get("text", "")
         case_id = form.get("case_id", "").strip() or None
         incident_type = form.get("incident_type", "auto")
+        analysis_mode = form.get("analysis_mode", "quick")
+        user_question = form.get("user_question", "")
         lang = form.get("lang", "zh")
         source = uploaded_name or "web_textarea"
 
@@ -203,6 +248,8 @@ class Handler(BaseHTTPRequestHandler):
             text,
             case_id=case_id,
             incident_type=incident_type,
+            user_question=user_question,
+            analysis_mode=analysis_mode,
             source=source,
             evidence_type=evidence_type,
             evidence_metadata=metadata,
@@ -213,7 +260,17 @@ class Handler(BaseHTTPRequestHandler):
 
         labels = LABELS[lang if lang in LABELS else "zh"]
         report = state.report_markdown + f"\n\n{labels['saved_to']}: {report_path}\n"
-        self._send(render_page(report=report, input_text=text, case_id=state.case_id, incident_type=incident_type, lang=lang))
+        self._send(
+            render_page(
+                report=report,
+                input_text=text,
+                case_id=state.case_id,
+                incident_type=incident_type,
+                analysis_mode=analysis_mode,
+                user_question=user_question,
+                lang=lang,
+            )
+        )
 
     def log_message(self, format: str, *args) -> None:
         return

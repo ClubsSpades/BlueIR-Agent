@@ -33,6 +33,11 @@ def default_roles() -> dict[str, RoleConfig]:
             task_type="evidence_structuring",
             prompt_hint="Structure raw logs into evidence and timeline items.",
         ),
+        "timeline": RoleConfig(
+            name="timeline",
+            task_type="timeline_analysis",
+            prompt_hint="Build and review an incident timeline from timestamped evidence.",
+        ),
         "mitre": RoleConfig(
             name="mitre",
             task_type="attack_mapping",

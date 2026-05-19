@@ -30,6 +30,15 @@ class ModelRouter:
                 return provider.complete(messages, temperature=temperature)
         return ""
 
+    def role_model(self, role: str) -> str:
+        role_config = self.roles.get(role)
+        if role_config:
+            return f"{role_config.provider}/{role_config.model}"
+        for provider in self.providers:
+            if getattr(provider, "available", True):
+                return f"{getattr(provider, 'name', 'provider')}/{getattr(provider, 'model', 'model')}"
+        return "local-heuristic"
+
     def _select_provider(self, name: str) -> Optional[LLMProvider]:
         for provider in self.providers:
             if getattr(provider, "name", "") == name and getattr(provider, "available", True):

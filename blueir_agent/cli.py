@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--case-id", help="Optional case ID.")
     parser.add_argument("--title", default="", help="Optional case title.")
     parser.add_argument("--incident-type", default="auto", help="auto, webshell, windows, linux, or generic.")
+    parser.add_argument("--question", default="", help="Optional investigation question.")
+    parser.add_argument("--analysis-mode", default="quick", help="quick, deep, report, ioc, or question.")
     parser.add_argument("--out", help="Optional Markdown report output path.")
     args = parser.parse_args()
 
@@ -33,6 +35,8 @@ def main() -> None:
         case_id=args.case_id,
         title=args.title,
         incident_type=args.incident_type,
+        user_question=args.question,
+        analysis_mode=args.analysis_mode,
         source=source,
         evidence_type=evidence_type,
         evidence_metadata=metadata,

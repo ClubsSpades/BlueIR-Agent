@@ -2,6 +2,7 @@ from uuid import uuid4
 from typing import Optional
 
 from blueir_agent.agent.guardrails import safety_notice
+from blueir_agent.agent.role_runner import AgentRoleRunner
 from blueir_agent.agent.state import AnalysisState, EvidenceItem
 from blueir_agent.providers import DeepSeekProvider, LLMMessage, ModelRouter
 from blueir_agent.skills.registry import default_skills
@@ -20,6 +21,8 @@ class BlueIRAgent:
         case_id: Optional[str] = None,
         title: str = "",
         incident_type: str = "auto",
+        user_question: str = "",
+        analysis_mode: str = "quick",
         source: str = "input",
         evidence_type: str = "text",
         evidence_metadata: Optional[dict] = None,
@@ -27,6 +30,8 @@ class BlueIRAgent:
         state = AnalysisState(
             case_id=case_id or f"case-{uuid4().hex[:8]}",
             title=title,
+            user_question=user_question,
+            analysis_mode=analysis_mode or "quick",
             requested_incident_type=incident_type or "auto",
             input_text=normalize_text(text),
         )
@@ -48,6 +53,7 @@ class BlueIRAgent:
                 skill.run(state)
                 state.add_trace(skill.name, {"findings": len(state.findings), "incident_type": state.incident_type})
 
+        AgentRoleRunner(self.router).run(state)
         state.model_summary = self._summarize_with_model(state)
 
         for skill in self.skills:
@@ -71,10 +77,14 @@ class BlueIRAgent:
                 "user",
                 (
                     "请基于以下结构化证据输出一段简洁的事件摘要、风险判断和人工复核重点。\n"
+                    f"User question: {state.user_question or '未提供'}\n"
+                    f"Analysis mode: {state.analysis_mode}\n"
                     f"Incident type: {state.incident_type}\n"
                     f"IOCs: {[ioc.__dict__ for ioc in state.structured_iocs]}\n"
                     f"Findings: {[finding.__dict__ for finding in state.findings]}\n"
                     f"Timeline: {[event.__dict__ for event in state.timeline]}\n"
+                    f"Role outputs: {[output.__dict__ for output in state.role_outputs]}\n"
+                    f"Evidence gaps: {state.evidence_gaps}\n"
                     f"MITRE: {state.attack_mapping}\n"
                     "要求：不要编造不存在的证据；如果证据不足，明确说明。"
                 ),

@@ -18,6 +18,8 @@ class ReportWriterSkill:
             "",
             f"- 生成时间 / Generated: {now}",
             f"- 标题 / Title: {state.title or state.case_id}",
+            f"- 用户问题 / User question: {state.user_question or '-'}",
+            f"- 分析模式 / Analysis mode: {state.analysis_mode}",
             f"- 用户选择类型 / Requested type: {state.requested_incident_type}",
             f"- 实际识别类型 / Incident type: {state.incident_type}",
             f"- 安全边界 / Safety: {safety_notice()}",
@@ -27,6 +29,7 @@ class ReportWriterSkill:
             "- 必填项 / Required: 至少提供告警/日志文本，或上传一个证据文件。Provide pasted text or upload one evidence file.",
             "- 上传优先 / Upload priority: 同时提供文本和文件时，默认优先分析上传文件。If both are provided, the uploaded file is analyzed first.",
             "- 事件类型 / Incident Type: `Auto detect` 会尝试匹配多个 Skill；手动选择会强制指定 Skill。Wrong selection may produce no Finding or only metadata.",
+            "- 用户问题 / User Question: 用于让角色 Agent 围绕你的具体问题分析。Use it to focus role agents on your investigation question.",
             "- 二进制文件 / Binary files: PCAP/EVTX 当前执行安全预分析；完整协议/事件解析建议导出为 Zeek/tshark/CSV/XML 后再上传。",
             "",
             "## 执行摘要 / Executive Summary",
@@ -74,6 +77,23 @@ class ReportWriterSkill:
                 lines.append("")
         else:
             lines.append("当前 Skill 未产生高置信度发现 / No high-confidence finding was produced by the current skills.")
+
+        lines.extend(["", "## 角色分工 / Agent Roles", ""])
+        if state.role_outputs:
+            lines.append("| Role | Model | Summary | Evidence refs |")
+            lines.append("|---|---|---|---|")
+            for output in state.role_outputs:
+                summary = output.summary.replace("|", "\\|").replace("\n", "<br>")
+                refs = ", ".join(output.evidence_refs[:8]) or "-"
+                lines.append(f"| {output.role} | {output.model or '-'} | {summary[:900]} | {refs} |")
+        else:
+            lines.append("- 未执行角色分析 / No role analysis recorded.")
+
+        lines.extend(["", "## 证据缺口 / Evidence Gaps", ""])
+        if state.evidence_gaps:
+            lines.extend(f"- {gap}" for gap in state.evidence_gaps)
+        else:
+            lines.append("- 暂未发现明显证据缺口 / No obvious evidence gap recorded.")
 
         lines.extend(["", "## 证据项 / Evidence Items", ""])
         if state.evidence_items:
