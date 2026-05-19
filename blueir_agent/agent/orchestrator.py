@@ -1,5 +1,5 @@
 from uuid import uuid4
-from typing import Optional
+from typing import Callable, Optional
 
 from blueir_agent.agent.guardrails import safety_notice
 from blueir_agent.agent.role_runner import AgentRoleRunner
@@ -26,7 +26,9 @@ class BlueIRAgent:
         source: str = "input",
         evidence_type: str = "text",
         evidence_metadata: Optional[dict] = None,
+        progress_callback: Optional[Callable[[str, str], None]] = None,
     ) -> AnalysisState:
+        self._progress(progress_callback, "case", "building case and evidence")
         state = AnalysisState(
             case_id=case_id or f"case-{uuid4().hex[:8]}",
             title=title,
@@ -43,25 +45,32 @@ class BlueIRAgent:
                 metadata=evidence_metadata or {},
             )
         )
+        self._progress(progress_callback, "ioc", "extracting IOC")
         state.iocs = extract_iocs(state.input_text)
         state.structured_iocs = extract_structured_iocs(state.input_text, source=source)
         state.add_trace("extract_iocs", state.iocs)
 
+        self._progress(progress_callback, "skills", "running matched skills")
         selected = [skill for skill in self.skills if skill.name == "report_writer" or self._should_run(skill, state)]
         for skill in selected:
             if skill.name != "report_writer":
+                self._progress(progress_callback, "skills", f"running {skill.name}")
                 skill.run(state)
                 state.add_trace(skill.name, {"findings": len(state.findings), "incident_type": state.incident_type})
 
+        self._progress(progress_callback, "roles", "running role agents")
         AgentRoleRunner(self.router).run(state)
+        self._progress(progress_callback, "summary", "building model summary")
         state.model_summary = self._summarize_with_model(state)
 
+        self._progress(progress_callback, "report", "writing report")
         for skill in self.skills:
             if skill.name == "report_writer":
                 skill.run(state)
                 state.add_trace(skill.name, {"report_chars": len(state.report_markdown)})
                 break
 
+        self._progress(progress_callback, "done", "analysis completed")
         return state
 
     def _summarize_with_model(self, state: AnalysisState) -> str:
@@ -109,3 +118,7 @@ class BlueIRAgent:
             target = aliases.get(requested, requested)
             return target == skill.name
         return skill.score(state) > 0
+
+    def _progress(self, callback: Optional[Callable[[str, str], None]], step: str, message: str) -> None:
+        if callback:
+            callback(step, message)

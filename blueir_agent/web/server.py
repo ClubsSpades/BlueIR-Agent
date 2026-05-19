@@ -2,7 +2,11 @@ import html
 import io
 import urllib.parse
 import cgi
+import json
 import os
+import threading
+import time
+from uuid import uuid4
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -11,6 +15,8 @@ from blueir_agent.tools import analyze_file_bytes
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = ROOT / "reports"
+JOBS = {}
+JOBS_LOCK = threading.Lock()
 
 
 STYLE = """
@@ -29,6 +35,15 @@ button:hover { background: #0f4fd0; }
 .hint { color: #475569; font-size: 13px; line-height: 1.45; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .toolbar .pill { margin-right: 0; }
+.workflow { margin: 12px 0; display: grid; gap: 8px; }
+.step { display: flex; align-items: center; gap: 10px; color: #64748b; font-size: 13px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; }
+.step.active { color: #155eef; font-weight: 650; }
+.step.active .dot { background: #155eef; box-shadow: 0 0 0 4px #dbeafe; }
+.step.done { color: #166534; }
+.step.done .dot { background: #16a34a; }
+.step.error { color: #b42318; }
+.step.error .dot { background: #d92d20; }
 .required { color: #b42318; font-weight: 650; }
 .stack { display: grid; gap: 12px; }
 .report { white-space: pre-wrap; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; background: #fbfcfe; border: 1px solid #d8dee8; border-radius: 6px; padding: 14px; overflow-x: auto; }
@@ -56,6 +71,8 @@ LABELS = {
         "incident_type": "事件类型",
         "analysis_mode": "分析模式",
         "question": "分析问题 / 提示词",
+        "workflow": "分析流程",
+        "progress_wait": "正在分析，请稍候...",
         "upload": "可选文件上传",
         "text": "告警 / 日志文本（未上传文件时填写）",
         "input_help": "至少填写“告警/日志文本”或上传一个文件。两者同时存在时，优先分析上传文件；文本框会作为粘贴日志和无文件测试入口。",
@@ -88,6 +105,8 @@ LABELS = {
         "incident_type": "Incident Type",
         "analysis_mode": "Analysis Mode",
         "question": "Investigation Question / Prompt",
+        "workflow": "Analysis Workflow",
+        "progress_wait": "Analysis is running...",
         "upload": "Optional file upload",
         "text": "Alert / log text (use when no file is uploaded)",
         "input_help": "Provide alert/log text or upload one file. If both are present, the uploaded file is analyzed first; the text box is for pasted logs and quick tests.",
@@ -211,9 +230,63 @@ def render_page(
         <span class="pill">Windows Logon</span>
         <span class="pill">MITRE</span>
       </div>
+      <h2>{labels["workflow"]}</h2>
+      <div id="workflow" class="workflow">
+        <div class="step" data-step="case"><span class="dot"></span><span>Case / Evidence</span></div>
+        <div class="step" data-step="ioc"><span class="dot"></span><span>IOC</span></div>
+        <div class="step" data-step="skills"><span class="dot"></span><span>Skills</span></div>
+        <div class="step" data-step="roles"><span class="dot"></span><span>Role Agents</span></div>
+        <div class="step" data-step="summary"><span class="dot"></span><span>Summary</span></div>
+        <div class="step" data-step="report"><span class="dot"></span><span>Report</span></div>
+        <div class="step" data-step="done"><span class="dot"></span><span>Done</span></div>
+      </div>
+      <div id="progress-text" class="hint" style="display:none">{labels["progress_wait"]}</div>
       <div class="report">{report_html or labels["empty_report"]}</div>
     </section>
   </main>
+  <script>
+    const form = document.querySelector("form");
+    const reportBox = document.querySelector(".report");
+    const progressText = document.getElementById("progress-text");
+    const steps = Array.from(document.querySelectorAll(".step"));
+    const order = ["case", "ioc", "skills", "roles", "summary", "report", "done"];
+
+    function setStep(step, status) {{
+      const index = order.indexOf(step);
+      steps.forEach((node) => {{
+        const nodeIndex = order.indexOf(node.dataset.step);
+        node.classList.remove("active", "done", "error");
+        if (status === "error" && node.dataset.step === step) node.classList.add("error");
+        else if (nodeIndex < index || (status === "done" && nodeIndex <= index)) node.classList.add("done");
+        else if (node.dataset.step === step) node.classList.add("active");
+      }});
+    }}
+
+    async function poll(jobId) {{
+      const response = await fetch(`/api/status?id=${{encodeURIComponent(jobId)}}`);
+      const job = await response.json();
+      setStep(job.current_step || "case", job.status);
+      progressText.style.display = "block";
+      progressText.textContent = job.message || "";
+      if (job.report) reportBox.textContent = job.report;
+      if (job.status === "done" || job.status === "error") return;
+      setTimeout(() => poll(jobId), 700);
+    }}
+
+    form.addEventListener("submit", async (event) => {{
+      event.preventDefault();
+      reportBox.textContent = "";
+      progressText.style.display = "block";
+      progressText.textContent = "{labels["progress_wait"]}";
+      setStep("case", "running");
+      const response = await fetch("/api/analyze", {{
+        method: "POST",
+        body: new FormData(form),
+      }});
+      const data = await response.json();
+      poll(data.job_id);
+    }});
+  </script>
 </body>
 </html>"""
     return body.encode("utf-8")
@@ -228,6 +301,9 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        if self.path.startswith("/api/status"):
+            self._handle_status()
+            return
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
         lang = query.get("lang", ["zh"])[0]
         self._send(render_page(lang=lang))
@@ -235,6 +311,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
+        if self.path.startswith("/api/analyze"):
+            self._handle_analyze(raw)
+            return
         form, uploaded_name, evidence_type, metadata = self._parse_form(raw)
         text = form.get("text", "")
         case_id = form.get("case_id", "").strip() or None
@@ -272,12 +351,97 @@ class Handler(BaseHTTPRequestHandler):
             )
         )
 
+    def _handle_analyze(self, raw: bytes) -> None:
+        form, uploaded_name, evidence_type, metadata = self._parse_form(raw)
+        job_id = uuid4().hex[:12]
+        lang = form.get("lang", "zh")
+        with JOBS_LOCK:
+            JOBS[job_id] = {
+                "status": "running",
+                "current_step": "case",
+                "message": "queued",
+                "report": "",
+                "created_at": time.time(),
+                "lang": lang,
+            }
+        thread = threading.Thread(
+            target=self._run_job,
+            args=(job_id, form, uploaded_name, evidence_type, metadata),
+            daemon=True,
+        )
+        thread.start()
+        self._send_json({"job_id": job_id})
+
+    def _run_job(self, job_id: str, form: dict[str, str], uploaded_name: str, evidence_type: str, metadata: dict) -> None:
+        def progress(step: str, message: str) -> None:
+            with JOBS_LOCK:
+                if job_id in JOBS:
+                    JOBS[job_id].update({"current_step": step, "message": message})
+
+        try:
+            text = form.get("text", "")
+            case_id = form.get("case_id", "").strip() or None
+            incident_type = form.get("incident_type", "auto")
+            analysis_mode = form.get("analysis_mode", "quick")
+            user_question = form.get("user_question", "")
+            source = uploaded_name or "web_textarea"
+            state = BlueIRAgent().analyze(
+                text,
+                case_id=case_id,
+                incident_type=incident_type,
+                user_question=user_question,
+                analysis_mode=analysis_mode,
+                source=source,
+                evidence_type=evidence_type,
+                evidence_metadata=metadata,
+                progress_callback=progress,
+            )
+            REPORT_DIR.mkdir(parents=True, exist_ok=True)
+            report_path = REPORT_DIR / f"{state.case_id}.md"
+            report_path.write_text(state.report_markdown, encoding="utf-8")
+            lang = form.get("lang", "zh")
+            labels = LABELS[lang if lang in LABELS else "zh"]
+            report = state.report_markdown + f"\n\n{labels['saved_to']}: {report_path}\n"
+            with JOBS_LOCK:
+                JOBS[job_id].update(
+                    {
+                        "status": "done",
+                        "current_step": "done",
+                        "message": "analysis completed",
+                        "report": report,
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001 - surfaced to local UI
+            with JOBS_LOCK:
+                JOBS[job_id].update(
+                    {
+                        "status": "error",
+                        "current_step": "report",
+                        "message": f"analysis failed: {exc}",
+                    }
+                )
+
+    def _handle_status(self) -> None:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        job_id = query.get("id", [""])[0]
+        with JOBS_LOCK:
+            job = JOBS.get(job_id, {"status": "error", "message": "job not found", "current_step": "case", "report": ""})
+        self._send_json(job)
+
     def log_message(self, format: str, *args) -> None:
         return
 
     def _send(self, body: bytes) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_json(self, payload: dict) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
